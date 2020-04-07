@@ -23,7 +23,7 @@ const (
     // 默认请求方法
     DefaultRequestMethod = "Get"
     // 在上下文中保存路径参数的字段
-    PathParamsField = "params"
+    PathParamsField = "_path_params"
 )
 
 var requestMethods = [...]string{"Get", "Post", "Delete", "Put", "Patch", "Head"}
@@ -169,7 +169,9 @@ func (m *Route) Registry(controller interface{}, handlers ...Handler) {
     c := newController(m.party, controller, handlers...)
     m.controllers[c.pathName] = c
 
-    m.party.CreateRoutes(nil, fmt.Sprintf("/%s/{%s:path}", c.pathName, PathParamsField), m.handler(c))
+    handler := m.handler(c)
+    m.party.CreateRoutes(nil, fmt.Sprintf("/%s", c.pathName), handler)
+    m.party.CreateRoutes(nil, fmt.Sprintf("/%s/{%s:path}", c.pathName, PathParamsField), handler)
 }
 
 func (m *Route) handler(c *controller) iris.Handler {
