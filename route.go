@@ -129,6 +129,7 @@ func (m *controller) handler(ctx Context, ctx_val reflect.Value, reqArg *ReqArg)
 }
 
 type Route struct {
+    parent      *Route
     ctx_typ     reflect.Type
     party       iris.Party
     handlers    []Handler
@@ -157,6 +158,7 @@ func (m *Route) Use(handlers ...Handler) {
 // 创建一个子路由
 func (m *Route) Party(path string, handlers ...Handler) *Route {
     return &Route{
+        parent:      m,
         ctx_typ:     m.ctx_typ,
         party:       m.party.Party(path),
         handlers:    handlers,
@@ -169,12 +171,28 @@ func (m *Route) Registry(controller interface{}, handlers ...Handler) {
     c := newController(m.party, controller, handlers...)
     m.controllers[c.pathName] = c
 
-    handler := m.handler(c)
+    handler := m.process(c)
     m.party.CreateRoutes(nil, fmt.Sprintf("/%s", c.pathName), handler)
     m.party.CreateRoutes(nil, fmt.Sprintf("/%s/{%s:path}", c.pathName, PathParamsField), handler)
 }
 
-func (m *Route) handler(c *controller) iris.Handler {
+func (m *Route) handle(ctx Context, reqArg *ReqArg) bool {
+    if m.parent != nil {
+        if !m.parent.handle(ctx, reqArg) {
+            return false
+        }
+    }
+
+    for _, handler := range m.handlers {
+        handler(ctx, reqArg)
+        if reqArg.IsStop() {
+            return false
+        }
+    }
+    return true
+}
+
+func (m *Route) process(c *controller) iris.Handler {
     name := c.name
     return func(irisctx iris.Context) {
         reqMethod := irisctx.Method()
@@ -200,11 +218,8 @@ func (m *Route) handler(c *controller) iris.Handler {
             return
         }
 
-        for _, handler := range m.handlers {
-            handler(ctx, reqArg)
-            if reqArg.IsStop() {
-                return
-            }
+        if !m.handle(ctx, reqArg) {
+            return
         }
 
         c.handler(ctx, ctx_val, reqArg)
